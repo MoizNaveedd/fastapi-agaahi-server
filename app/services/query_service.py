@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage
-from app.models.schemas import QueryRequest, ConversationNameRequest
+from app.models.schemas import QueryRequest, ConversationNameRequest, DashboardRequest
 from app.utils.database import db
 from app.utils.helpers import get_table_details, validate_table_access
 from app.config import settings
@@ -12,6 +12,13 @@ from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
 from operator import itemgetter
 import re
+import base64
+import ast
+from app.services.inline_graph_service import process_chart_request, plot_chart
+from app.utils.dashboard_constant import get_chart_meta_info
+from app.services.dashboard_service import set_graph_request
+
+
 from app.utils.prompts import (
     QUERY_PROMPT,
     ANSWER_PROMPT,
@@ -21,7 +28,8 @@ from app.utils.prompts import (
     TABLE_SELECTION_PROMPT,
     CSV_CHECK_PROMPT,
     CHART_CHECK_PROMPT,
-    UNAUTHORIZED_ACCESS_PROMPT
+    UNAUTHORIZED_ACCESS_PROMPT,
+    QUERY_PROMPT_CSV
 )
 
 router = APIRouter()
@@ -29,14 +37,9 @@ router = APIRouter()
 # Update the database connection
 # db = SQLDatabase.from_uri(settings.DATABASE_URL)
 
-# Update get_llm function
-def get_llm():
-    """Initialize and return LLM instance"""
-    return ChatGoogleGenerativeAI(
-        model="models/gemini-1.5-flash-8b",
-        temperature=0,
-        google_api_key=settings.GOOGLE_API_KEY,
-    )
+def get_llm(request: Request):
+    """Get LLM instance from app state"""
+    return request.app.state.llm
 
 # Add helper functions
 def clean_query(raw_query: str) -> str:
@@ -55,9 +58,8 @@ def clean_code_block(code: str) -> str:
     # Remove ```jsx, ```html, or just ``` from the start, and ``` from the end
     return re.sub(r'^```(?:jsx|html)?\n|\n```$', '', code.strip())
 
-def handle_non_db_query(question: str):
+def handle_non_db_query(question: str, llm):
     """Handle queries that are not related to database operations"""
-    llm = get_llm()
     casual_response = llm.invoke(NON_DB_QUERY_PROMPT.format(question=question)).content.strip()
     return {
         "response": clean_code_block(casual_response),
@@ -65,9 +67,8 @@ def handle_non_db_query(question: str):
         "format": "html"
     }
 
-def extract_selected_tables(question: str) -> list:
+def extract_selected_tables(question: str, llm) -> list:
     """Extract table names from the user question"""
-    llm = get_llm()
     response = llm.invoke(TABLE_SELECTION_PROMPT.format(
         question=question,
         table_details=table_details_context
@@ -76,9 +77,8 @@ def extract_selected_tables(question: str) -> list:
     print(tables)
     return tables
 
-def handle_unauthorized_access(role: str):
+def handle_unauthorized_access(role: str, llm):
     """Handle case when user doesn't have access to requested tables"""
-    llm = get_llm() 
     response = llm.invoke(UNAUTHORIZED_ACCESS_PROMPT.format(role=role)).content.strip()
     return {
         "response": clean_code_block(response),
@@ -87,30 +87,209 @@ def handle_unauthorized_access(role: str):
     }
 
 def is_csv_request(question: str) -> bool:
-    """Check if the request is for CSV output"""
-    llm = get_llm()
-    response = llm.invoke(CSV_CHECK_PROMPT.format(question=question)).content
-    return response.lower().strip() == "yes"
+    """Check if the request is for CSV output using keyword matching"""
+    csv_keywords = ["csv", "report", "spreadsheet", "excel", "export", "download"]
+    return any(keyword in question.lower() for keyword in csv_keywords)
 
 def is_chart_request(question: str) -> bool:
     """Check if the request is for chart visualization"""
-    llm = get_llm()
-    response = llm.invoke(CHART_CHECK_PROMPT.format(question=question)).content
-    return response.lower().strip() == "yes"
+    graph_keywords = ["graph", "chart", "plot", "visualize", "visualization", "graphviz"]
+    return any(keyword in question.lower() for keyword in graph_keywords)
 
-def handle_csv_request(question: str, role: str, tables: list):
+
+
+
+
+
+
+
+# Below implementation for CSV request
+
+def sanitize_query(response: dict) -> dict:
+    query = response["query"]
+    lowered = query.lower()
+
+    # Strip OUTFILE, COPY TO, or anything similar
+    if "into outfile" in lowered:
+        query = query.split("INTO OUTFILE")[0].strip()
+    elif "copy to" in lowered:
+        query = query.split("COPY TO")[0].strip()
+
+    response["query"] = query
+    return response
+
+
+# import re
+
+def get_column_names_from_query(query: str) -> list:
+    """
+    Extract column names from a SQL query (robust to SELECT keyword variations and multiline).
+    """
+    # Use DOTALL so `.` matches newlines
+    match = re.search(r"SELECT\s+(.*?)\s+FROM", query, re.IGNORECASE | re.DOTALL)
+    if match:
+        columns_str = match.group(1)
+        # Split by commas not inside parentheses (handles functions like COUNT(...))
+        columns = [col.strip() for col in re.split(r",\s*(?![^()]*\))", columns_str)]
+        return columns
+    return []
+
+
+def full_sql_pipeline(inputs):
+    # Inject schema into inputs
+    inputs["schema"] = table_details_context
+
+    try:
+        # Step 1: Generate query using updated inputs
+        uncleaned_query = generate_query_for_csv(inputs)
+        query = clean_query(uncleaned_query)
+
+        # Step 2: Sanitize query
+        sanitized_response = sanitize_query({"query": query})  # expects a dict
+        sanitized_query = sanitized_response["query"]
+
+        # Step 3: Get column names from query (if applicable)
+        column_names = get_column_names_from_query(sanitized_query)
+
+        # Step 4: Execute query
+        result = execute_sql(sanitized_query)
+        if not result:
+            raise ValueError("No results returned from query.")
+
+        # Convert result to CSV format
+        csv_data = convert_to_csv(column_names, result)
+
+        return {
+            "result": result,
+            "query": sanitized_query,
+            "csv_data": csv_data
+        }
+
+    except IndexError as e:
+        # Log the error and provide more details about the issue
+        print(f"IndexError: {str(e)} - Likely cause: empty or invalid table list.")
+        raise HTTPException(status_code=500, detail="Error in extracting tables or generating query.")
+
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+
+def convert_to_csv(column_names, result):
+    # Start by creating the header (first line) of the CSV
+    csv_lines = [",".join(column_names)]  # This line contains column names, joined by commas
+    result1 = ast.literal_eval(result)
+
+    # Loop through the result rows and format each row into a CSV line
+    for row in result1:
+        if isinstance(row, dict):
+            # If row is a dictionary, extract values in the same order as column names
+            csv_lines.append(",".join([str(row.get(col, '')).replace("\n", " ").replace("\r", "") for col in column_names]))
+        elif isinstance(row, (list, tuple)):
+            # If row is a list/tuple, simply join values by commas
+            csv_lines.append(",".join([str(val).replace("\n", " ").replace("\r", "") for val in row]))
+        else:
+            # If row is a single value, convert it to a string
+            csv_lines.append(str(row))
+
+    # Combine all lines into a single CSV string
+    csv_data = "\n".join(csv_lines)
+
+    # Convert CSV string to Base64
+    csv_bytes = csv_data.encode('utf-8')
+    csv_base64 = base64.b64encode(csv_bytes).decode('utf-8')
+    # print(csv_base64)
+    return csv_base64
+
+
+
+def generate_csv_download_link(base64_csv: str, filename: str = "report.csv") -> str:
+    return (
+        f"<a href=\"data:text/csv;base64,{base64_csv}\" "
+        f"download=\"{filename}\" "
+        f"class='text-blue-600 underline ml-2'>Click here to download</a>"
+    )
+
+def generate_query_for_csv(input_data):
+    llm = get_llm()
+    return llm.invoke(QUERY_PROMPT_CSV.format(**input_data)).content.strip()
+    # return llm.invoke(query_prompt.format(**input_data)).content.strip()
+
+
+def handle_csv_request(question: str, role: str, tables: list, llm):
     """Handle request for CSV output"""
-    # Implementation for CSV handling
-    return {"message": "CSV generation not implemented yet"}
+    try:
 
-def handle_chart_request(question: str, role: str, tables: list):
+        chain = RunnableLambda(full_sql_pipeline)
+
+
+        response = chain.invoke({
+            "question": question,
+            "role": role,
+            "table_names_to_use": tables
+        })
+
+        if isinstance(response.get("result"), str) and "Error" in response["result"]:
+            return {
+                "response": "<div className='p-4 text-red-600'>Sorry, I couldn't generate a report.</div>",
+                "base64": None,
+                "format": "csv"
+            }
+
+        # Get column names from the query
+        query = response["query"]
+        column_names = get_column_names_from_query(query)
+        
+        # Convert result to CSV format
+        csv_data = convert_to_csv(column_names, response["result"])
+        html_link = generate_csv_download_link(csv_data)
+        
+        return {
+            "response": (
+                "<div className='bg-gray-100 py-4 px-6 rounded-3xl max-w-3xl ant-flex "
+                "css-dev-only-do-not-override-tk01x6'>"
+                "<span className='text-black'>Here is your generated report:</span>"
+                f"{html_link}"
+                "</div>"
+            ),
+            "base64": csv_data,
+            "format": "csv"
+        }
+
+    except Exception as e:
+        print(f"CSV generation error: {str(e)}")
+        return {
+            "response": "<div className='p-4 text-red-600'>Sorry, I couldn't generate a report.</div>",
+            "base64": None,
+            "format": "csv"
+        }
+
+
+# Bwlow implemenrarion is for chart request in chats
+
+def handle_chart_request(question: str, role: str, tables: list, llm):
     """Handle request for chart visualization"""
-    # Implementation for chart handling
-    return {"message": "Chart generation not implemented yet"}
+    class DummyHistory:
+        messages = [HumanMessage(content=question)]
 
-def handle_regular_query(question: str, role: str, tables: list):
+    chart_info = process_chart_request(question, DummyHistory(), llm, db, "")
+    if chart_info:
+        base64_chart = plot_chart(chart_info, db)
+        return {
+            "response": "<div className='p-4 text-green-600'>Here is your chart:</div>",
+            "base64": base64_chart,
+            "format": "graph"
+        }
+    else:
+        return {
+            "response": "<div className='p-4 text-red-600'>Sorry, I couldn't create a chart from that.</div>",
+            "base64": None,
+            "format": "graph"
+        }
+
+
+def handle_regular_query(question: str, role: str, tables: list, llm):
     """Handle standard SQL query generation and execution"""
-    llm = get_llm()
     chain = (
         RunnablePassthrough()
         .assign(schema=lambda _: table_details_context)
@@ -132,41 +311,40 @@ def handle_regular_query(question: str, role: str, tables: list):
         "format": "html"
     }
 
-def check_if_db_related(input_data):
+def check_if_db_related(input_data, llm):
     """Determine if a question is related to any database tables."""
-    llm = get_llm()
     response = llm.invoke(DB_CHECK_PROMPT.format(**input_data)).content.strip().lower()
     return "yes" in response.lower() if response else False
 
-def generate_name(conversation: str) -> str:
+def generate_name(conversation: str, llm) -> str:
     """Generate a name for the conversation"""
-    llm = get_llm()
     return llm.invoke(CONVERSATION_NAME_PROMPT.format(user_prompt=conversation)).content.strip()
 
 @router.post("/query")
-async def generate_sql_response(query_request: QueryRequest):
+async def generate_sql_response(query_request: QueryRequest, request: Request):
     try:
+        llm = get_llm(request)
         question = query_request.user_prompt
         role = query_request.role
         
         # Check if question is DB related
-        is_db_related = check_if_db_related({"question": question, "schema": table_details_context})
+        is_db_related = check_if_db_related({"question": question, "schema": table_details_context}, llm)
         if not is_db_related:
-            return handle_non_db_query(question)
+            return handle_non_db_query(question, llm)
             
         # Extract and validate table access
-        tables = extract_selected_tables(question)
+        tables = extract_selected_tables(question, llm)
         if not validate_table_access(role, tables):
-            return handle_unauthorized_access(role)
+            return handle_unauthorized_access(role, llm)
             
         # Handle different query types
         if is_csv_request(question):
-            return handle_csv_request(question, role, tables)
+            return handle_csv_request(question, role, tables, llm)
         elif is_chart_request(question):
-            return handle_chart_request(question, role, tables)
+            return handle_chart_request(question, role, tables, llm)
             
         # Handle regular query
-        return handle_regular_query(question, role, tables)
+        return handle_regular_query(question, role, tables, llm)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -178,3 +356,11 @@ async def generate_conversation_name(request: ConversationNameRequest):
         return {"conversation_name": clean_code_block(name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
+
+@router.post('/dashboard')
+async def dashboard(request: DashboardRequest):
+    try:
+        return await set_graph_request(request, get_chart_meta_info())
+    except Exception:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred. in dashboard")
+

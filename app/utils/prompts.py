@@ -4,7 +4,7 @@ from langchain.prompts import PromptTemplate
 QUERY_PROMPT = PromptTemplate.from_template(
     """
     You are a MySQL expert. Given an input question and the following database schema, generate a correct MySQL query.
-    - Never use `SELECT *`, only select relevant columns.
+    - Do not use `SELECT *`, only select relevant columns.
     - Ensure all column names exist in the schema.
     - Use `CURDATE()` if "today" is mentioned.
     - Use proper joins when needed.
@@ -17,6 +17,29 @@ QUERY_PROMPT = PromptTemplate.from_template(
     SQLQuery:
     """
 )
+
+QUERY_PROMPT_CSV = PromptTemplate.from_template(
+    """
+    You are a strict MySQL expert. Never use `SELECT *` under any condition. 
+    Always specify relevant column names based on the given schema. 
+    Never assume. If a user request is ambiguous, respond with a clarifying SQL query using only available schema details. 
+    Only output valid SQL.
+
+    Given an input question and the following database schema, generate a correct MySQL query.
+    - Do not use `SELECT *`, only select relevant columns.
+    - Ensure all column names exist in the schema.
+    - Use `CURDATE()` if "today" is mentioned.
+    - Use proper joins when needed.
+    - Return ONLY the SQL query text with no additional comments, explanation, or metadata.
+
+    Database Schema:
+    {schema}
+
+    User Question: {question}
+    SQLQuery:
+    """
+)
+
 
 # Answer Generation Prompt
 ANSWER_PROMPT = PromptTemplate.from_template(

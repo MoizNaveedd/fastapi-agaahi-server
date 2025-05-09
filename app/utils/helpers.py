@@ -88,7 +88,24 @@ def check_if_db_related(input_data):
 
 
 
-def extract_selected_tables(inputs):
+def extract_selected_tables(inputs, llm):
+
+    table_details_context = get_table_details()
+
+    system_message = """
+    Extract all table names mentioned in the user's question.
+    
+    Example:
+    Question: 'how many orders placed by customer John Doe'
+    Answer: ['orders','customers']
+    
+    Instruction:
+    - Do not write print statement and ``` just return simple string
+    
+    Question: {question}
+    
+    Database Schema: {table_details_context}
+    """
     question = inputs["question"]
     print("in extraction", question)
     tables = llm.invoke(system_message.format(
@@ -103,3 +120,27 @@ def extract_selected_tables(inputs):
     result = [table.strip().lower() for table in tables.split(',') if table.strip()]
     
     return result
+
+
+def get_relevant_table_details(df, extracted_tables: list) -> str:
+    """
+    Returns table details only for the extracted tables.
+
+    Args:
+        df: The dataframe containing all table info from the Google Sheet.
+        extracted_tables: List of table names that are relevant to the current question.
+
+    Returns:
+        A string containing details of only the relevant tables.
+    """
+    relevant_details = ""
+
+    for index, row in df.iterrows():
+        if row['Table Name'] in extracted_tables:
+            relevant_details += (
+                f"Table Name: {row['Table Name']}\n"
+                f"Table Description: {row['Table Description']}\n"
+                f"Attributes: {row['Attributes']}\n\n"
+            )
+
+    return relevant_details
