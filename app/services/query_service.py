@@ -17,8 +17,9 @@ import ast
 from app.services.inline_graph_service import process_chart_request, plot_chart
 from app.utils.dashboard_constant import get_chart_meta_info
 from app.services.dashboard_service import set_graph_request
-from app.services.embedding_service import LocalKnowledgeBaseService
+# from app.services.embedding_service import LocalKnowledgeBaseService
 from app.models.schemas import KnowledgeBaseQuery
+from app.services.context_service import ContextService
 
 
 from app.utils.prompts import (
@@ -369,99 +370,112 @@ async def dashboard(request: DashboardRequest):
         raise HTTPException(status_code=500, detail="An unexpected error occurred. in dashboard")
 
 
-
-
 # from .embedding_service import LocalKnowledgeBaseService
 
 # Initialize knowledge base service once
-knowledge_base_service = LocalKnowledgeBaseService()
+# knowledge_base_service = LocalKnowledgeBaseService()
 
-async def process_query(question: str, llm):
-    # First, let's create a more engaging default prompt for the LLM
-    default_prompt = f"""You are Agaahi, a friendly AI assistant specializing in database queries and data analysis.
-    The user has asked: "{question}"
-    
-    Respond in a conversational way that:
-    1. Briefly introduces yourself and what Agaahi does
-    2. Shows you understand their question
-    3. Provides a helpful response or guides them to what they might want to know
-    4. Asks a relevant follow-up question to better understand their needs
-    
-    Keep the tone friendly and engaging. Don't provide a list of features - have a natural conversation.
-    
-    Response:"""
-    
-    # Example style:
-    # "Hi! I'm Agaahi, your AI database assistant. I noticed you're interested in [their topic]. Let me tell you a bit about that...
-    # [Brief relevant information]
-    # What specific aspect would you like to explore further?"
+class QueryService:
+    def __init__(self):
+        self.context_service = ContextService()
 
-    question_lower = question.lower()
-    knowledge_base_keywords = {
-        "about": ["what is", "what's", "tell me about", "explain", "describe", "app", "application", "agaahi"],
-        "features": ["features", "capabilities", "what can", "able to", "help me", "functionality"],
-        "policy": ["policy", "privacy", "security", "terms", "conditions", "guidelines"],
-        "how": ["how does", "how do", "how can", "how to", "working"],
-        "help": ["help", "support", "guide", "tutorial", "documentation"],
-        "who": ["who are", "who is", "who can", "who can't", "who is agaahi", "who is the founder of agaahi"]
-    }
-    
-    is_knowledge_query = any(
-        any(keyword in question_lower for keyword in keywords)
-        for keywords in knowledge_base_keywords.values()
-    )
-    
-    if is_knowledge_query:
-        context = knowledge_base_service.get_relevant_context(question)
-        
-        if context:
-            prompt = f"""You are Agaahi, a friendly AI assistant. Use the following context to have a natural conversation with the user.
-            Make it engaging and end with a relevant follow-up question.
-            
-            Context:
-            {context}
-            
-            User Question: {question}
-            
-            Remember to:
-            1. Be conversational and friendly
-            2. Use information from the context
-            3. Ask a relevant follow-up question
-            4. Keep the tone helpful and engaging
-            
-            Response:"""
-        else:
-            # If no specific context found, use the default prompt
-            prompt = default_prompt
-            
-        llm_response = llm.invoke(prompt).content.strip()
-        
-        return {
-            "response": f"""
-                <div className='p-4 bg-blue-50 rounded-lg'>
-                    <div className='text-gray-700'>{llm_response}</div>
-                </div>
-            """,
-            "format": "text"
-        }
-    
-    # For non-knowledge queries, still maintain the conversational approach
-    llm_response = llm.invoke(default_prompt).content.strip()
-    
-    return {
-        "response": f"""
-            <div className='p-4 bg-blue-50 rounded-lg'>
-                <div className='text-gray-700'>{llm_response}</div>
-            </div>
-        """,
-        "format": "text"
-    }
+    def get_llm_response(self, prompt: str, llm=None) -> dict:
+        """Get response from LLM"""
+        try:
+            if not llm:
+                return {
+                    "response": """
+                        <div className='p-4 bg-red-50 rounded-lg'>
+                            <div className='text-red-700'>LLM not properly configured.</div>
+                        </div>
+                    """,
+                    "format": "text"
+                }
+
+            response = llm.invoke(prompt).content.strip()
+
+            return {
+                "response": f"""
+                    <div className='p-4 bg-blue-50 rounded-lg'>
+                        <div className='text-gray-700'>{response}</div>
+                    </div>
+                """,
+                "format": "text"
+            }
+
+        except Exception as e:
+            print(f"LLM Error: {str(e)}")
+            return {
+                "response": """
+                    <div className='p-4 bg-red-50 rounded-lg'>
+                        <div className='text-red-700'>Error processing request.</div>
+                    </div>
+                """,
+                "format": "text"
+            }
+
+    def _is_about_agaahi(self, query: str) -> bool:
+        """Check if query is about Agaahi"""
+        agaahi_keywords = [
+            "agaahi", "what is agaahi", "tell me about agaahi",
+            "who made", "who created", "founder", "developer",
+            "how does agaahi", "features", "capabilities"
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in agaahi_keywords)
+
+    def process_query(self, query: str, llm=None) -> dict:
+        """Process the incoming user query and prepare a prompt for the LLM"""
+        try:
+            if self._is_about_agaahi(query):
+                # Get Agaahi-specific context
+                relevant_contexts = self.context_service.get_relevant_context(query)
+                context_text = "\n".join(relevant_contexts)
+
+                prompt = f"""Context information about Agaahi:
+{context_text}
+
+User question: {query}
+
+Please provide a response that:
+1. Directly answers their question about Agaahi using the context
+2. Highlights relevant features or information
+3. Maintains a professional and friendly tone
+4. Asks if they would like to know more about any specific aspect of Agaahi
+
+If the context doesn't fully answer their question, focus on what is known from the context."""
+            else:
+                # For non-Agaahi queries
+                prompt = f"""You are Agaahi, an AI assistant. The user has asked: {query}
+
+                        Please provide a response that:
+                        1. Politely explains that you are Agaahi, an AI database assistant when use say hi or hello or greeting message
+                        2. Mentions that you specialize in helping with database queries and data analysis and also respond to the question user asked
+                        3. Maintains a helpful and friendly tone
+                        """
+
+            return self.get_llm_response(prompt, llm)
+
+        except Exception as e:
+            print(f"Query Processing Error: {str(e)}")
+            return {
+                "response": """
+                    <div className='p-4 bg-red-50 rounded-lg'>
+                        <div className='text-red-700'>Error processing query.</div>
+                    </div>
+                """,
+                "format": "text"
+            }
+
+
+# Initialize the QueryService
+query_service = QueryService()
 
 @router.post("/knowledge-base/query")
 async def query_knowledge_base(query: KnowledgeBaseQuery, request: Request):
     try:
         llm = get_llm(request)
-        response = await process_query(query.question, llm)
+        response = query_service.process_query(query.question, llm)
         return response
     except Exception as e:
         raise HTTPException(
