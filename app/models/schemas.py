@@ -25,3 +25,6 @@ class DashboardRequest(BaseModel):
     user_prompt: str
     role: str
     chart_id: int 
+
+class KnowledgeBaseQuery(BaseModel):
+    question: str

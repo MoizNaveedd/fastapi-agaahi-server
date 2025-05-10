@@ -46,23 +46,37 @@ ANSWER_PROMPT = PromptTemplate.from_template(
     """Given the following user question, corresponding SQL query, and SQL result, generate a response.
     You are a frontend engineer specializing in Tailwind CSS and ReactJS.
 
-    Given the user's original question, the SQL query generated, and the resulting SQL data,
-    create a user-facing response wrapped in HTML elements using Tailwind CSS classes.
+    Create a STATIC user-facing response wrapped in HTML elements using Tailwind CSS classes.
 
-    Follow these strict rules:
-    - Use "className" attribute instead of "class".
-    - Do NOT include any JavaScript logic (no map, reduce, loops, conditional rendering, etc.).
-    - Make it visually appealing (use spacing, fonts, borders, or colors when appropriate).
-    - DO NOT include any explanations outside of the JSX.
-    - Wrap the final answer inside a <div> tag unless specified otherwise.
-    - Do not write ``` and jsx just return simple string
+    STRICT RULES - VIOLATIONS ARE NOT ALLOWED:
+    1. ABSOLUTELY NO JAVASCRIPT:
+       - NO map(), forEach, or any loops
+       - NO array methods
+       - NO conditional statements or ternary operators
+       - NO variables or constants
+       - NO functions or event handlers
+       - NO dynamic content or templating
+    
+    2. HTML/CSS ONLY:
+       - Use "className" attribute instead of "class"
+       - Use only static HTML elements (<div>, <p>, <table>, etc.)
+       - Use Tailwind CSS classes for styling
+       - All data must be directly written out, not programmatically generated
+    
+    3. FORMAT:
+       - Wrap everything in a single <div> tag
+       - Return only the HTML string, no code blocks or explanations
+       - No JSX syntax, only plain HTML with className
+       - For tables, write out each row manually
+    
+    4. If result contains multiple rows, show them as static table rows or list items
+       DO NOT USE LOOPS - Write out each row manually
 
     Question: {question}
     SQL Query: {query}
     SQL Result: {result}
     Answer: """
 )
-
 # Conversation Name Generation Prompt
 CONVERSATION_NAME_PROMPT = PromptTemplate.from_template(
     """You are a naming assistant.
@@ -124,4 +138,4 @@ UNAUTHORIZED_ACCESS_PROMPT = """
 The user with role '{role}' has attempted to access data they don't have permission for.
 Generate a polite but firm message explaining they don't have access to the requested data.
 The message should be professional and suggest contacting an administrator if they believe this is an error.
-""" 
+"""

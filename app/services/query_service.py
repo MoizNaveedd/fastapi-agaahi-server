@@ -17,6 +17,8 @@ import ast
 from app.services.inline_graph_service import process_chart_request, plot_chart
 from app.utils.dashboard_constant import get_chart_meta_info
 from app.services.dashboard_service import set_graph_request
+from app.services.embedding_service import LocalKnowledgeBaseService
+from app.models.schemas import KnowledgeBaseQuery
 
 
 from app.utils.prompts import (
@@ -320,6 +322,7 @@ def generate_name(conversation: str, llm) -> str:
     """Generate a name for the conversation"""
     return llm.invoke(CONVERSATION_NAME_PROMPT.format(user_prompt=conversation)).content.strip()
 
+
 @router.post("/query")
 async def generate_sql_response(query_request: QueryRequest, request: Request):
     try:
@@ -350,9 +353,10 @@ async def generate_sql_response(query_request: QueryRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/conversation-name")
-async def generate_conversation_name(request: ConversationNameRequest):
+async def generate_conversation_name(name_prompt: ConversationNameRequest,request: Request):
     try:
-        name = generate_name(request.user_prompt)
+        llm = get_llm(request)
+        name = generate_name(name_prompt.user_prompt, llm)
         return {"conversation_name": clean_code_block(name)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
@@ -364,3 +368,103 @@ async def dashboard(request: DashboardRequest):
     except Exception:
         raise HTTPException(status_code=500, detail="An unexpected error occurred. in dashboard")
 
+
+
+
+# from .embedding_service import LocalKnowledgeBaseService
+
+# Initialize knowledge base service once
+knowledge_base_service = LocalKnowledgeBaseService()
+
+async def process_query(question: str, llm):
+    # First, let's create a more engaging default prompt for the LLM
+    default_prompt = f"""You are Agaahi, a friendly AI assistant specializing in database queries and data analysis.
+    The user has asked: "{question}"
+    
+    Respond in a conversational way that:
+    1. Briefly introduces yourself and what Agaahi does
+    2. Shows you understand their question
+    3. Provides a helpful response or guides them to what they might want to know
+    4. Asks a relevant follow-up question to better understand their needs
+    
+    Keep the tone friendly and engaging. Don't provide a list of features - have a natural conversation.
+    
+    Response:"""
+    
+    # Example style:
+    # "Hi! I'm Agaahi, your AI database assistant. I noticed you're interested in [their topic]. Let me tell you a bit about that...
+    # [Brief relevant information]
+    # What specific aspect would you like to explore further?"
+
+    question_lower = question.lower()
+    knowledge_base_keywords = {
+        "about": ["what is", "what's", "tell me about", "explain", "describe", "app", "application", "agaahi"],
+        "features": ["features", "capabilities", "what can", "able to", "help me", "functionality"],
+        "policy": ["policy", "privacy", "security", "terms", "conditions", "guidelines"],
+        "how": ["how does", "how do", "how can", "how to", "working"],
+        "help": ["help", "support", "guide", "tutorial", "documentation"],
+        "who": ["who are", "who is", "who can", "who can't", "who is agaahi", "who is the founder of agaahi"]
+    }
+    
+    is_knowledge_query = any(
+        any(keyword in question_lower for keyword in keywords)
+        for keywords in knowledge_base_keywords.values()
+    )
+    
+    if is_knowledge_query:
+        context = knowledge_base_service.get_relevant_context(question)
+        
+        if context:
+            prompt = f"""You are Agaahi, a friendly AI assistant. Use the following context to have a natural conversation with the user.
+            Make it engaging and end with a relevant follow-up question.
+            
+            Context:
+            {context}
+            
+            User Question: {question}
+            
+            Remember to:
+            1. Be conversational and friendly
+            2. Use information from the context
+            3. Ask a relevant follow-up question
+            4. Keep the tone helpful and engaging
+            
+            Response:"""
+        else:
+            # If no specific context found, use the default prompt
+            prompt = default_prompt
+            
+        llm_response = llm.invoke(prompt).content.strip()
+        
+        return {
+            "response": f"""
+                <div className='p-4 bg-blue-50 rounded-lg'>
+                    <div className='text-gray-700'>{llm_response}</div>
+                </div>
+            """,
+            "format": "text"
+        }
+    
+    # For non-knowledge queries, still maintain the conversational approach
+    llm_response = llm.invoke(default_prompt).content.strip()
+    
+    return {
+        "response": f"""
+            <div className='p-4 bg-blue-50 rounded-lg'>
+                <div className='text-gray-700'>{llm_response}</div>
+            </div>
+        """,
+        "format": "text"
+    }
+
+@router.post("/knowledge-base/query")
+async def query_knowledge_base(query: KnowledgeBaseQuery, request: Request):
+    try:
+        llm = get_llm(request)
+        response = await process_query(query.question, llm)
+        return response
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing knowledge base query: {str(e)}"
+        )
