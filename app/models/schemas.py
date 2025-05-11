@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 class Role(Enum):
     Owner = "owner"
@@ -11,6 +11,7 @@ class Role(Enum):
 class QueryRequest(BaseModel):
     user_prompt: str
     role: str
+    allowed_tables: List[str]
 
 class ConversationNameRequest(BaseModel):
     user_prompt: str
