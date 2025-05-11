@@ -16,5 +16,9 @@ app.include_router(query_router, prefix="/api/v1")
 async def root():
     return {"message": "Welcome to SQL Chat API"}
 
+@app.get("/api/v1/")
+async def root1():
+    return {"message": "Welcome to Agaahi API"}
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

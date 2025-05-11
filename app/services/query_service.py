@@ -214,9 +214,8 @@ def generate_csv_download_link(base64_csv: str, filename: str = "report.csv") ->
     )
 
 def generate_query_for_csv(input_data):
-    llm = get_llm()
+    llm = input_data["llm"]
     return llm.invoke(QUERY_PROMPT_CSV.format(**input_data)).content.strip()
-    # return llm.invoke(query_prompt.format(**input_data)).content.strip()
 
 
 def handle_csv_request(question: str, role: str, tables: list, llm):
@@ -229,7 +228,8 @@ def handle_csv_request(question: str, role: str, tables: list, llm):
         response = chain.invoke({
             "question": question,
             "role": role,
-            "table_names_to_use": tables
+            "table_names_to_use": tables,
+            "llm": llm
         })
 
         if isinstance(response.get("result"), str) and "Error" in response["result"]:
@@ -384,33 +384,21 @@ class QueryService:
         try:
             if not llm:
                 return {
-                    "response": """
-                        <div className='p-4 bg-red-50 rounded-lg'>
-                            <div className='text-red-700'>LLM not properly configured.</div>
-                        </div>
-                    """,
+                    "response": """LLM not properly configured""",
                     "format": "text"
                 }
 
             response = llm.invoke(prompt).content.strip()
 
             return {
-                "response": f"""
-                    <div className='p-4 bg-blue-50 rounded-lg'>
-                        <div className='text-gray-700'>{response}</div>
-                    </div>
-                """,
+                "response": f"""{response}""",
                 "format": "text"
             }
 
         except Exception as e:
             print(f"LLM Error: {str(e)}")
             return {
-                "response": """
-                    <div className='p-4 bg-red-50 rounded-lg'>
-                        <div className='text-red-700'>Error processing request.</div>
-                    </div>
-                """,
+                "response": "Error processing request",
                 "format": "text"
             }
 
