@@ -3,7 +3,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage
 from app.models.schemas import QueryRequest, ConversationNameRequest, DashboardRequest
 from app.utils.database import db
-from app.utils.helpers import get_table_details, validate_table_access
+from app.utils.helpers import get_table_details, validate_table_access, validate_table_access_v2
 from app.config import settings
 import os
 from langchain_community.utilities import SQLDatabase
@@ -20,6 +20,7 @@ from app.services.dashboard_service import set_graph_request
 # from app.services.embedding_service import LocalKnowledgeBaseService
 from app.models.schemas import KnowledgeBaseQuery
 from app.services.context_service import ContextService
+from typing import List
 
 
 from app.utils.prompts import (
@@ -330,6 +331,7 @@ async def generate_sql_response(query_request: QueryRequest, request: Request):
         llm = get_llm(request)
         question = query_request.user_prompt
         role = query_request.role
+        allowed_tables = query_request.allowed_tables
         
         # Check if question is DB related
         is_db_related = check_if_db_related({"question": question, "schema": table_details_context}, llm)
@@ -338,7 +340,7 @@ async def generate_sql_response(query_request: QueryRequest, request: Request):
             
         # Extract and validate table access
         tables = extract_selected_tables(question, llm)
-        if not validate_table_access(role, tables):
+        if not validate_table_access_v2(allowed_tables, tables):
             return handle_unauthorized_access(role, llm)
             
         # Handle different query types

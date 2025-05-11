@@ -27,6 +27,10 @@ def validate_table_access(role: str, tables: list) -> bool:
     allowed_tables = ROLE_TABLE_ACCESS.get(role, [])
     return all(table in allowed_tables for table in tables)
 
+def validate_table_access_v2(allowed_tables: list, tables: list) -> bool:
+    # allowed_tables = ROLE_TABLE_ACCESS.get(role, [])
+    return all(table in allowed_tables for table in tables)
+
 def save_chart(fig, chart_type: str, x_axis: str, y_axis: str) -> str:
     os.makedirs(settings.CHART_DIR, exist_ok=True)
     
