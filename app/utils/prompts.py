@@ -43,7 +43,7 @@ QUERY_PROMPT_CSV = PromptTemplate.from_template(
 
 # Answer Generation Prompt
 ANSWER_PROMPT = PromptTemplate.from_template(
-    """Given the following user question, corresponding SQL query, and SQL result, generate a response.
+    """Given the following user question, corresponding SQL result, and analysis, generate a response.
     You are a frontend engineer specializing in Tailwind CSS and ReactJS.
 
     Create a STATIC user-facing response wrapped in HTML elements using Tailwind CSS classes.
@@ -73,9 +73,50 @@ ANSWER_PROMPT = PromptTemplate.from_template(
        DO NOT USE LOOPS - Write out each row manually
 
     Question: {question}
+    SQL Result: {result}
+    Analysis: {analysis}
+
+    Answer: """
+)
+    # SQL Query: {query}
+
+ANALYSIS_PROMPT = PromptTemplate.from_template(
+    """Given the following user question, corresponding SQL query, and SQL result, provide a detailed analysis.
+    You are an expert data analyst who excels at interpreting SQL results and providing meaningful insights.
+
+    ANALYSIS REQUIREMENTS:
+    1. CONTEXT UNDERSTANDING:
+       - Acknowledge the specific intent of the user's question
+       - Identify the key metrics being analyzed
+
+    2. DATA INTERPRETATION:
+       - Highlight key findings from the results
+       - Identify patterns, trends, or anomalies
+       - Compare values where relevant
+       - Point out any notable highs or lows
+
+    3. INSIGHTS DELIVERY:
+       - Provide business-relevant interpretations
+       - Explain what the numbers actually mean
+       - Draw connections between different data points
+       - Suggest potential implications
+
+    4. RESPONSE STRUCTURE:
+       - Start with a summary of findings
+       - Break down the details
+       - Provide specific examples from the data
+       - End with key takeaways
+
+    5. TONE AND STYLE:
+       - Be clear and professional
+       - Use natural, conversational language
+       - Avoid technical jargon unless necessary
+       - Be specific with numbers and comparisons
+
+    Question: {question}
     SQL Query: {query}
     SQL Result: {result}
-    Answer: """
+    Analysis: """
 )
 # Conversation Name Generation Prompt
 CONVERSATION_NAME_PROMPT = PromptTemplate.from_template(

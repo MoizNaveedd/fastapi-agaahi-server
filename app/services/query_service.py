@@ -33,7 +33,8 @@ from app.utils.prompts import (
     CSV_CHECK_PROMPT,
     CHART_CHECK_PROMPT,
     UNAUTHORIZED_ACCESS_PROMPT,
-    QUERY_PROMPT_CSV
+    QUERY_PROMPT_CSV,
+    ANALYSIS_PROMPT
 )
 
 router = APIRouter()
@@ -250,10 +251,23 @@ def handle_csv_request(question: str, role: str, tables: list, llm):
         
         return {
             "response": (
-                "<div className='bg-gray-100 py-4 px-6 rounded-3xl max-w-3xl ant-flex "
-                "css-dev-only-do-not-override-tk01x6'>"
-                "<span className='text-black'>Here is your generated report:</span>"
-                f"{html_link}"
+                "<div className='bg-gray-100 py-6 px-8 rounded-3xl max-w-3xl shadow-md'>"
+                    "<div className='space-y-4'>"
+                        "<h2 className='text-xl font-semibold text-gray-800 mb-4'>"
+                            "Your Analysis Report is Ready!"
+                        "</h2>"
+                        "<p className='text-gray-600 mb-4'>"
+                            "I've prepared a detailed report based on your request. "
+                            "You can access it using the link below."
+                        "</p>"
+                        "<div className=''>"
+                            f"{html_link}"
+                        "</div>"
+                        "<p className='text-sm text-gray-500 mt-4'>"
+                            "Click the link above to view or download your report. "
+                            "Let me know if you need any clarification or have additional questions!"
+                        "</p>"
+                    "</div>"
                 "</div>"
             ),
             "base64": csv_data,
@@ -278,9 +292,25 @@ def handle_chart_request(question: str, role: str, tables: list, llm):
 
     chart_info = process_chart_request(question, DummyHistory(), llm, db, "")
     if chart_info:
-        base64_chart = plot_chart(chart_info, db)
+        base64_chart, data = plot_chart(chart_info, db)
+        
+        # Create analysis context with proper attribute access
+        analysis_context = {
+            "question": question,
+            "query": getattr(chart_info, 'query', ''),  # Using getattr for safe attribute access
+            "result": data.to_dict() if not data.empty else {}  # Convert DataFrame to dict for analysis
+        }
+        
+        analysis = llm.invoke(ANALYSIS_PROMPT.format(**analysis_context)).content.strip()
+        result = llm.invoke(
+            ANSWER_PROMPT.format(
+                question=question,
+                result=data.to_dict() if not data.empty else {},
+                analysis=analysis
+            )
+        ).content.strip()
         return {
-            "response": "<div className='p-4 text-green-600'>Here is your chart:</div>",
+            "response": clean_code_block(result),
             "base64": base64_chart,
             "format": "graph"
         }
@@ -294,15 +324,30 @@ def handle_chart_request(question: str, role: str, tables: list, llm):
 
 def handle_regular_query(question: str, role: str, tables: list, llm):
     """Handle standard SQL query generation and execution"""
+    # chain = (
+    #     RunnablePassthrough()
+    #     .assign(schema=lambda _: table_details_context)
+    #     .assign(query=lambda x: llm.invoke(QUERY_PROMPT.format(**x)).content.strip())
+    #     .assign(uncleaned_result=itemgetter("query") | RunnableLambda(clean_query))
+    #     .assign(result=itemgetter("uncleaned_result") | RunnableLambda(execute_sql))
+    #     .assign(final=lambda x: llm.invoke(ANSWER_PROMPT.format(**x)).content.strip())
+    # )
     chain = (
         RunnablePassthrough()
         .assign(schema=lambda _: table_details_context)
         .assign(query=lambda x: llm.invoke(QUERY_PROMPT.format(**x)).content.strip())
         .assign(uncleaned_result=itemgetter("query") | RunnableLambda(clean_query))
         .assign(result=itemgetter("uncleaned_result") | RunnableLambda(execute_sql))
-        .assign(final=lambda x: llm.invoke(ANSWER_PROMPT.format(**x)).content.strip())
+        .assign(analysis=lambda x: llm.invoke(ANALYSIS_PROMPT.format(**x)).content.strip())
+        .assign(final=lambda x: llm.invoke(
+            ANSWER_PROMPT.format(
+                question=x["question"],
+                query=x["query"],
+                result=x["result"],
+                analysis=x["analysis"]
+            )
+        ).content.strip())
     )
-
 
     response = chain.invoke({
         "question": question,
@@ -409,7 +454,7 @@ class QueryService:
         agaahi_keywords = [
             "agaahi", "what is agaahi", "tell me about agaahi",
             "who made", "who created", "founder", "developer",
-            "how does agaahi", "features", "capabilities"
+            "how does agaahi", "features", "capabilities","how it works","how to use it","how to use agaahi","what is agaahi","how to use app"
         ]
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in agaahi_keywords)
@@ -439,7 +484,7 @@ If the context doesn't fully answer their question, focus on what is known from 
                 prompt = f"""You are Agaahi, an AI assistant. The user has asked: {query}
 
                         Please provide a response that:
-                        1. Politely explains that you are Agaahi, an AI database assistant when use say hi or hello or greeting message
+                        1. when use say hi or hello or greeting message then politely explains that you are Agaahi, an AI database assistant
                         2. Mentions that you specialize in helping with database queries and data analysis and also respond to the question user asked
                         3. Maintains a helpful and friendly tone
                         """

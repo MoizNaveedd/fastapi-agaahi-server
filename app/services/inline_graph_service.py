@@ -261,4 +261,4 @@ def plot_chart(chart_info, db):
     img_base64 = base64.b64encode(buffer.read()).decode("utf-8")
     # print(f"Chart saved at {save_path}")
     # print(img_base64)
-    return img_base64
+    return img_base64,data
