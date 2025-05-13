@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage
-from app.models.schemas import QueryRequest, ConversationNameRequest, DashboardRequest
+from app.models.schemas import QueryRequest, ConversationNameRequest, DashboardRequest, EditorQuery
 from app.utils.database import db
 from app.utils.helpers import get_table_details, validate_table_access, validate_table_access_v2
 from app.config import settings
@@ -34,7 +34,8 @@ from app.utils.prompts import (
     CHART_CHECK_PROMPT,
     UNAUTHORIZED_ACCESS_PROMPT,
     QUERY_PROMPT_CSV,
-    ANALYSIS_PROMPT
+    ANALYSIS_PROMPT,
+    QUERY_PROMPT_FOR_EDITOR
 )
 
 router = APIRouter()
@@ -84,7 +85,7 @@ def extract_selected_tables(question: str, llm) -> list:
 
 def handle_unauthorized_access(role: str, llm):
     """Handle case when user doesn't have access to requested tables"""
-    response = llm.invoke(UNAUTHORIZED_ACCESS_PROMPT.format(role=role)).content.strip()
+    response = (UNAUTHORIZED_ACCESS_PROMPT.format(role=role)).content.strip()
     return {
         "response": clean_code_block(response),
         "base64": None,
@@ -517,3 +518,19 @@ async def query_knowledge_base(query: KnowledgeBaseQuery, request: Request):
             status_code=500,
             detail=f"Error processing knowledge base query: {str(e)}"
         )
+
+
+
+
+
+# Below is for editor related work 
+@router.post("/editor/query")
+async def editor_query(query: EditorQuery, request: Request):
+    try:
+        llm = get_llm(request)
+        table_details_context = get_table_details()
+        uncleaned_result = llm.invoke(QUERY_PROMPT_FOR_EDITOR.format(question=query.question, schema=table_details_context)).content.strip()
+        response = clean_query(uncleaned_result)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

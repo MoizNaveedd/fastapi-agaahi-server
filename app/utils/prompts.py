@@ -18,6 +18,22 @@ QUERY_PROMPT = PromptTemplate.from_template(
     """
 )
 
+QUERY_PROMPT_FOR_EDITOR= PromptTemplate.from_template(
+       """
+    You are a MySQL expert. Given an input question and the following database schema, generate a correct MySQL query.
+    - Ensure all column names exist in the schema.
+    - Use `CURDATE()` if "today" is mentioned.
+    - Use proper joins when needed.
+    - Return ONLY the SQL query text with no additional comments, explanation, or metadata.
+
+    Database Schema:
+    {schema}
+
+    User Question: {question}
+    SQLQuery:
+    """
+)
+
 QUERY_PROMPT_CSV = PromptTemplate.from_template(
     """
     You are a strict MySQL expert. Never use `SELECT *` under any condition. 

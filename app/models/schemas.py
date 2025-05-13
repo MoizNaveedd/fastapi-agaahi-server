@@ -27,5 +27,8 @@ class DashboardRequest(BaseModel):
     role: str
     chart_id: int 
 
+class EditorQuery(BaseModel):
+    question: str
+
 class KnowledgeBaseQuery(BaseModel):
     question: str
