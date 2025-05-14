@@ -60,41 +60,46 @@ QUERY_PROMPT_CSV = PromptTemplate.from_template(
 # Answer Generation Prompt
 ANSWER_PROMPT = PromptTemplate.from_template(
     """Given the following user question, corresponding SQL result, and analysis, generate a response.
-    You are a frontend engineer specializing in Tailwind CSS and ReactJS.
+You are a frontend engineer specializing in Tailwind CSS and ReactJS.
 
-    Create a STATIC user-facing response wrapped in HTML elements using Tailwind CSS classes.
+Create a STATIC user-facing response wrapped in HTML elements using Tailwind CSS classes.
 
-    STRICT RULES - VIOLATIONS ARE NOT ALLOWED:
-    1. ABSOLUTELY NO JAVASCRIPT:
-       - NO map(), forEach, or any loops
-       - NO array methods
-       - NO conditional statements or ternary operators
-       - NO variables or constants
-       - NO functions or event handlers
-       - NO dynamic content or templating
-    
-    2. HTML/CSS ONLY:
-       - Use "className" attribute instead of "class"
-       - Use only static HTML elements (<div>, <p>, <table>, etc.)
-       - Use Tailwind CSS classes for styling
-       - All data must be directly written out, not programmatically generated
-    
-    3. FORMAT:
-       - Wrap everything in a single <div> tag
-       - Return only the HTML string, no code blocks or explanations
-       - No JSX syntax, only plain HTML with className
-       - For tables, write out each row manually
-    
-    4. If result contains multiple rows, show them as static table rows or list items
-       DO NOT USE LOOPS - Write out each row manually
+STRICT RULES - VIOLATIONS ARE NOT ALLOWED:
+1. ABSOLUTELY NO JAVASCRIPT:
+   - NO map(), forEach, or any loops
+   - NO array methods
+   - NO conditional statements or ternary operators
+   - NO variables or constants
+   - NO functions or event handlers
+   - NO dynamic content or templating
 
-    Question: {question}
-    SQL Result: {result}
-    Analysis: {analysis}
+2. HTML/CSS ONLY:
+   - Use "className" attribute instead of "class"
+   - Use only static HTML elements (<div>, <p>, <table>, etc.)
+   - Use Tailwind CSS classes for styling
+   - All data must be directly written out, not programmatically generated
 
-    Answer: """
+3. FORMAT:
+   - Wrap everything in a single <div> tag
+   - The top-level <div> must include the following Tailwind CSS classes to enable light and dark mode:
+     - "dark:bg-[#212121] dark:text-gray-300"
+   - Return only the HTML string, no code blocks or explanations
+   - No JSX syntax, only plain HTML with className
+   - For tables, write out each row manually
+
+4. If result contains multiple rows, show them as static table rows or list items
+   DO NOT USE LOOPS - Write out each row manually
+
+Question: {question}
+SQL Result: {result}
+Analysis: {analysis}
+
+Answer:
+<div className="p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300">
+  <!-- your static HTML content based on the result and analysis here -->
+</div>"""
 )
-    # SQL Query: {query}
+
 
 ANALYSIS_PROMPT = PromptTemplate.from_template(
     """Given the following user question, corresponding SQL query, and SQL result, provide a detailed analysis.
@@ -120,7 +125,7 @@ ANALYSIS_PROMPT = PromptTemplate.from_template(
     4. RESPONSE STRUCTURE:
        - Start with a summary of findings
        - Break down the details
-       - Provide specific examples from the data
+       - Provide specific examples from the data where necessary
        - End with key takeaways
 
     5. TONE AND STYLE:
