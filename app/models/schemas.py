@@ -29,6 +29,8 @@ class DashboardRequest(BaseModel):
 
 class EditorQuery(BaseModel):
     question: str
+    role: str
+    allowed_tables: List[str]
 
 class KnowledgeBaseQuery(BaseModel):
     question: str

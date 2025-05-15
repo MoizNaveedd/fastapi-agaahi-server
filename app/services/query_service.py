@@ -233,9 +233,7 @@ def generate_query_for_csv(input_data):
 def handle_csv_request(question: str, role: str, tables: list, llm):
     """Handle request for CSV output"""
     try:
-
         chain = RunnableLambda(full_sql_pipeline)
-
 
         response = chain.invoke({
             "question": question,
@@ -542,7 +540,17 @@ async def query_knowledge_base(query: KnowledgeBaseQuery, request: Request):
 async def editor_query(query: EditorQuery, request: Request):
     try:
         llm = get_llm(request)
+        question = query.question
+        role = query.role
+        allowed_tables = query.allowed_tables
         table_details_context = get_table_details()
+
+        tables = extract_selected_tables(question, llm)
+        is_valid, unauthorized_tables = validate_table_access_v2(allowed_tables, tables)
+
+        if not is_valid:
+            return handle_unauthorized_access(role, unauthorized_tables, llm)
+
         uncleaned_result = llm.invoke(QUERY_PROMPT_FOR_EDITOR.format(question=query.question, schema=table_details_context)).content.strip()
         response = clean_query(uncleaned_result)
         return response
