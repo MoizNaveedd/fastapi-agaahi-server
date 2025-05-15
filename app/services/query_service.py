@@ -35,7 +35,9 @@ from app.utils.prompts import (
     UNAUTHORIZED_ACCESS_PROMPT,
     QUERY_PROMPT_CSV,
     ANALYSIS_PROMPT,
-    QUERY_PROMPT_FOR_EDITOR
+    QUERY_PROMPT_FOR_EDITOR,
+    ANALYSIS_PROMPT_FOR_CHART,
+    ANSWER_PROMPT_FOR_CHART
 )
 
 router = APIRouter()
@@ -90,9 +92,9 @@ def clean_code_block_v2(text):
     return text.strip()
 
 
-def handle_unauthorized_access(role: str, llm):
+def handle_unauthorized_access(role: str,unauthorized_tables: list, llm):
     """Handle case when user doesn't have access to requested tables"""
-    response = (UNAUTHORIZED_ACCESS_PROMPT.format(role=role))
+    response = (UNAUTHORIZED_ACCESS_PROMPT.format(role=role,restricted_tables=unauthorized_tables))
     return {
         "response": clean_code_block(response),
         "base64": None,
@@ -244,7 +246,7 @@ def handle_csv_request(question: str, role: str, tables: list, llm):
 
         if isinstance(response.get("result"), str) and "Error" in response["result"]:
             return {
-                "response": "<div className='p-4 text-red-600'>Sorry, I couldn't generate a report.</div>",
+                "response": "<div className='p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300'>Sorry, I couldn't generate a report.</div>",
                 "base64": None,
                 "format": "csv"
             }
@@ -259,24 +261,26 @@ def handle_csv_request(question: str, role: str, tables: list, llm):
         
         return {
             "response": (
-                "<div className='bg-gray-100 py-6 px-8 rounded-3xl max-w-3xl shadow-md'>"
-                    "<div className='space-y-4'>"
-                        "<h2 className='text-xl font-semibold text-gray-800 mb-4'>"
-                            "Your Analysis Report is Ready!"
-                        "</h2>"
-                        "<p className='text-gray-600 mb-4'>"
-                            "I've prepared a detailed report based on your request. "
-                            "You can access it using the link below."
-                        "</p>"
-                        "<div className=''>"
-                            f"{html_link}"
-                        "</div>"
-                        "<p className='text-sm text-gray-500 mt-4'>"
-                            "Click the link above to view or download your report. "
-                            "Let me know if you need any clarification or have additional questions!"
-                        "</p>"
+                "<div className='p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300'>"
+                    "<div className='p-4 bg-white dark:bg-[#212121] text-black dark:text-white'>"
+                  "<div className='space-y-4'>"
+                    "<h2 className='text-xl font-semibold text-gray-800 dark:text-white mb-4'>"
+                      "Your Analysis Report is Ready!"
+                    "</h2>"
+                    "<p className='text-gray-600 dark:text-white mb-4'>"
+                      "I've prepared a detailed report based on your request. "
+                      "You can access it using the link below."
+                    "</p>"
+                    "<div>"
+                      f"{html_link}"
                     "</div>"
+                    "<p className='text-sm text-gray-500 dark:text-white mt-4'>"
+                      "Click the link above to view or download your report. "
+                      "Let me know if you need any clarification or have additional questions!"
+                    "</p>"
+                  "</div>"
                 "</div>"
+
             ),
             "base64": csv_data,
             "format": "csv"
@@ -309,9 +313,9 @@ def handle_chart_request(question: str, role: str, tables: list, llm):
             "result": data.to_dict() if not data.empty else {}  # Convert DataFrame to dict for analysis
         }
         
-        analysis = llm.invoke(ANALYSIS_PROMPT.format(**analysis_context)).content.strip()
+        analysis = llm.invoke(ANALYSIS_PROMPT_FOR_CHART.format(**analysis_context)).content.strip()
         result = llm.invoke(
-            ANSWER_PROMPT.format(
+            ANSWER_PROMPT_FOR_CHART.format(
                 question=question,
                 result=data.to_dict() if not data.empty else {},
                 analysis=analysis
@@ -324,7 +328,7 @@ def handle_chart_request(question: str, role: str, tables: list, llm):
         }
     else:
         return {
-            "response": "<div className='p-4 text-red-600'>Sorry, I couldn't create a chart from that.</div>",
+            "response": "<div className='p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300'>Sorry, I couldn't create a chart from that. I have a capability to generate only Bar Chart, Line Chart and Pie Chart. Please try again with a different question.</div>",
             "base64": None,
             "format": "graph"
         }
@@ -393,8 +397,11 @@ async def generate_sql_response(query_request: QueryRequest, request: Request):
             
         # Extract and validate table access
         tables = extract_selected_tables(question, llm)
-        if not validate_table_access_v2(allowed_tables, tables):
-            return handle_unauthorized_access(role, llm)
+        is_valid, unauthorized_tables = validate_table_access_v2(allowed_tables, tables)
+        # print(is_valid,unauthorized_tables)
+        # print("allowed_tables",allowed_tables)
+        if not is_valid:
+            return handle_unauthorized_access(role, unauthorized_tables, llm)
             
         # Handle different query types
         if is_csv_request(question):

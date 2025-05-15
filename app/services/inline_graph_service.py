@@ -169,41 +169,105 @@ def process_chart_request(question: str, history, llm, db, final_prompt):
 
 import ast
 
+import pandas as pd
+import json
+
+import json
+import pandas as pd
+from datetime import datetime
 def fetch_data_from_db(query, db, chart_info):
-    result = db.run(query)
-
-    # print("Raw query result:", result)  # Debugging statement
-    # print("Type of result:", type(result))  # Debugging statement
-
-    if not result:
-        print("Query returned no results.")
-        return pd.DataFrame()
-
-    # If result is a string, try to convert it into a list
-    if isinstance(result, str):
-        try:
-            result = ast.literal_eval(result)  # Safely convert string to Python object
-        except Exception as e:
-            print("Error parsing result:", e)
+    try:
+        result = db.run(query)
+        print("Raw result:", result)
+        print("Result type:", type(result))
+        
+        if result is None:
+            print("Query returned None.")
             return pd.DataFrame()
 
-    if isinstance(result, list) and all(isinstance(row, tuple) for row in result):
-        columns = [chart_info.x_axis, chart_info.y_axis]
-        df = pd.DataFrame(result, columns=columns)
-        print("Generated DataFrame:\n", df.head())  # Debugging statement
+        # If result is a string containing list of tuples with datetime
+        if isinstance(result, str):
+            try:
+                # Extract datetime and value pairs using string manipulation
+                import re
+                from datetime import datetime
+
+                # Parse the string to extract datetime and values
+                pattern = r"datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*(\d+)"
+                matches = re.findall(pattern, result)
+                
+                formatted_data = []
+                for match in matches:
+                    year, month, day, hour, minute, second, value = map(int, match)
+                    dt = datetime(year, month, day, hour, minute, second)
+                    formatted_data.append((dt.strftime('%Y-%m-%d %H:%M:%S'), value))
+
+                if not formatted_data:
+                    print("No valid data extracted from string")
+                    return pd.DataFrame()
+
+                df = pd.DataFrame(formatted_data, columns=[chart_info.x_axis, chart_info.y_axis])
+                print("Final DataFrame:\n", df.head())
+                return df
+
+            except Exception as e:
+                print(f"Error parsing string result: {e}")
+                traceback.print_exc()
+                return pd.DataFrame()
+
+        # If result is already a DataFrame
+        if isinstance(result, pd.DataFrame):
+            return result
+
+        # Ensure result is a list
+        if not isinstance(result, list):
+            result = [result]
+
+        print("Processed result:", result)
+
+        # Extract data based on x_axis and y_axis
+        formatted_data = []
+        for item in result:
+            try:
+                # If item is a tuple or list with exactly 2 elements
+                if isinstance(item, (tuple, list)) and len(item) == 2:
+                    x_value, y_value = item
+
+                    # Handle datetime conversion
+                    if isinstance(x_value, datetime):
+                        x_value = x_value.strftime('%Y-%m-%d %H:%M:%S')
+                    if isinstance(y_value, datetime):
+                        y_value = y_value.strftime('%Y-%m-%d %H:%M:%S')
+
+                    formatted_data.append((x_value, y_value))
+                else:
+                    print(f"Skipping invalid data format: {item}")
+                    continue
+
+            except Exception as e:
+                print(f"Error processing record {item}: {str(e)}")
+                continue
+
+        if not formatted_data:
+            print("No valid data after processing")
+            return pd.DataFrame()
+
+        # Create DataFrame
+        df = pd.DataFrame(formatted_data, columns=[chart_info.x_axis, chart_info.y_axis])
+        print("Final DataFrame:\n", df.head())
         return df
 
-    print("Unexpected query result format:", result)
-    return pd.DataFrame()
-
-
-
+    except Exception as e:
+        print(f"Error in fetch_data_from_db: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame()
 import os
 import base64
 from io import BytesIO
 
 def plot_chart(chart_info, db):
-    print("hellow hereee")
     if not chart_info:
         print("No chart data available.")
         return None

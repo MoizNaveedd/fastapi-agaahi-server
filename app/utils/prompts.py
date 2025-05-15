@@ -101,6 +101,70 @@ Answer:
 )
 
 
+ANALYSIS_PROMPT_FOR_CHART = PromptTemplate.from_template(
+   """Given the following user question, corresponding SQL query, and SQL result, provide a short analysis.
+    You are an expert data analyst who excels at interpreting SQL results and providing meaningful insights. 
+    
+
+   1.Identify the trend and analyze what user say about the data
+   2. Don not write too longs answer.
+   3. Highlight the key findings.
+   4. Include Quantitative analysis if needed.
+
+    Here is the chart information:
+
+    Here is the SQL query:
+    {query}
+
+    Here is the SQL result:
+    {result}
+
+    Analysis:
+    """
+)
+   #  {chart_info}
+
+ANSWER_PROMPT_FOR_CHART = PromptTemplate.from_template(
+"""Given the following user question, corresponding SQL result, and analysis, generate a response.
+You are a frontend engineer specializing in Tailwind CSS and ReactJS.
+
+Create a STATIC user-facing response wrapped in HTML elements using Tailwind CSS classes.
+
+STRICT RULES - VIOLATIONS ARE NOT ALLOWED:
+1. ABSOLUTELY NO JAVASCRIPT:
+   - NO map(), forEach, or any loops
+   - NO array methods
+   - NO conditional statements or ternary operators
+   - NO variables or constants
+   - NO functions or event handlers
+   - NO dynamic content or templating
+
+2. HTML/CSS ONLY:
+   - Use "className" attribute instead of "class"
+   - Use only static HTML elements (<div>, <p>, <table>, etc.)
+   - Use Tailwind CSS classes for styling
+   - All data must be directly written out, not programmatically generated
+
+3. FORMAT:
+   - Wrap everything in a single <div> tag
+   - The top-level <div> must include the following Tailwind CSS classes to enable light and dark mode:
+     - "dark:bg-[#212121] dark:text-gray-300"
+   - Return only the HTML string, no code blocks or explanations
+   - No JSX syntax, only plain HTML with className
+   - For tables, write out each row manually
+
+4. If result contains multiple rows, show them as static table rows or list items
+   DO NOT USE LOOPS - Write out each row manually
+
+Question: {question}
+Analysis: {analysis}
+
+Answer:
+<div className="p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300">
+  <!-- your static HTML content based on the result and analysis here -->
+</div>"""
+)
+
 ANALYSIS_PROMPT = PromptTemplate.from_template(
     """Given the following user question, corresponding SQL query, and SQL result, provide a detailed analysis.
     You are an expert data analyst who excels at interpreting SQL results and providing meaningful insights.
@@ -166,6 +230,9 @@ Follow these strict rules:
 - Wrap the final answer inside a <div> tag.
 
 User Question: {question}
+<div className="p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300">
+  <!-- your static HTML content based on the result -->
+</div
 """
 
 # DB-Related Check Prompt
@@ -197,7 +264,7 @@ CHART_CHECK_PROMPT = "Does this question ask for a chart or visualization? Answe
 
 # Unauthorized Access Prompt
 UNAUTHORIZED_ACCESS_PROMPT = """
-The user with role '{role}' has attempted to access data they don't have permission for.
-Generate a polite but firm message explaining they don't have access to the requested data.
-The message should be professional and suggest contacting an administrator if they believe this is an error.
+Access Denied: Your current role '{role}' does not have permission to access data from the following table(s): '{restricted_tables}'.
+
+If you believe this is an error or require access to these resources, please contact your administrator or review your assigned role’s permissions.
 """

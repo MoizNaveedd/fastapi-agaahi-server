@@ -27,9 +27,34 @@ def validate_table_access(role: str, tables: list) -> bool:
     allowed_tables = ROLE_TABLE_ACCESS.get(role, [])
     return all(table in allowed_tables for table in tables)
 
-def validate_table_access_v2(allowed_tables: list, tables: list) -> bool:
-    # allowed_tables = ROLE_TABLE_ACCESS.get(role, [])
-    return all(table in allowed_tables for table in tables)
+# def validate_table_access_v2(allowed_tables: list, tables: list) -> bool:
+#     # allowed_tables = ROLE_TABLE_ACCESS.get(role, [])
+#     return all(table in allowed_tables for table in tables)
+
+def validate_table_access_v2(allowed_tables: list, tables: list) -> tuple[bool, list]:
+    """
+    Validates if all requested tables are in the allowed tables list and returns unauthorized tables.
+    
+    Args:
+        allowed_tables (list): List of tables the user has permission to access
+        tables (list): List of tables the user is trying to access
+    
+    Returns:
+        tuple: (is_valid, unauthorized_tables)
+            - is_valid (bool): True if all requested tables are allowed, False otherwise
+            - unauthorized_tables (list): List of tables that user doesn't have permission to access
+    
+    Examples:
+        >>> allowed_tables = ['users', 'orders', 'products']
+        >>> validate_table_access_v2(allowed_tables, ['users', 'orders'])
+        (True, [])
+        >>> validate_table_access_v2(allowed_tables, ['users', 'secret_table'])
+        (False, ['secret_table'])
+    """
+    unauthorized_tables = [table for table in tables if table not in allowed_tables]
+    is_valid = len(unauthorized_tables) == 0
+    
+    return is_valid, unauthorized_tables
 
 def save_chart(fig, chart_type: str, x_axis: str, y_axis: str) -> str:
     os.makedirs(settings.CHART_DIR, exist_ok=True)
