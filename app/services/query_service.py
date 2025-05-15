@@ -83,9 +83,16 @@ def extract_selected_tables(question: str, llm) -> list:
     print(tables)
     return tables
 
+def clean_code_block_v2(text):
+    # Ensure it's always a string
+    if not isinstance(text, str):
+        raise ValueError("Expected string input to clean_code_block")
+    return text.strip()
+
+
 def handle_unauthorized_access(role: str, llm):
     """Handle case when user doesn't have access to requested tables"""
-    response = (UNAUTHORIZED_ACCESS_PROMPT.format(role=role)).content.strip()
+    response = (UNAUTHORIZED_ACCESS_PROMPT.format(role=role))
     return {
         "response": clean_code_block(response),
         "base64": None,
