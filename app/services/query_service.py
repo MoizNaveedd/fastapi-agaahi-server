@@ -301,6 +301,7 @@ def handle_chart_request(question: str, role: str, tables: list, llm):
         messages = [HumanMessage(content=question)]
 
     chart_info = process_chart_request(question, DummyHistory(), llm, db, "")
+    print("chart_info",chart_info)
     if chart_info:
         base64_chart, data = plot_chart(chart_info, db)
         
@@ -379,6 +380,14 @@ def generate_name(conversation: str, llm) -> str:
     """Generate a name for the conversation"""
     return llm.invoke(CONVERSATION_NAME_PROMPT.format(user_prompt=conversation)).content.strip()
 
+def is_valid_chart_type(question: str) -> bool:
+    """
+    Check if the question contains valid chart type keywords (line, bar, pie)
+    Returns True if any valid chart type is mentioned, False otherwise
+    """
+    chart_type_keywords = ["line", "bar", "pie"]
+    return any(keyword in question.lower() for keyword in chart_type_keywords)
+
 
 @router.post("/query")
 async def generate_sql_response(query_request: QueryRequest, request: Request):
@@ -405,10 +414,17 @@ async def generate_sql_response(query_request: QueryRequest, request: Request):
         if is_csv_request(question):
             return handle_csv_request(question, role, tables, llm)
         elif is_chart_request(question):
-            return handle_chart_request(question, role, tables, llm)
+            if is_valid_chart_type(question):
+                return handle_chart_request(question, role, tables, llm)
+            else:
+                return {
+                    "response": "<div className='p-4 bg-white dark:bg-[#212121] text-black dark:text-gray-300'>Sorry, I couldn't create a chart from that. I have a capability to generate only Bar Chart, Line Chart and Pie Chart. Please try again with a different question.</div>",
+                    "base64": None,
+                    "format": "graph"
+                }
             
         # Handle regular query
-        return handle_regular_query(question, role, tables, llm)
+        # return handle_regular_query(question, role, tables, llm)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

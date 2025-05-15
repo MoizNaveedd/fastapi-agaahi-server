@@ -171,36 +171,160 @@ import ast
 
 import pandas as pd
 import json
-
+import re
+                # from datetime import datetime
 import json
 import pandas as pd
 from datetime import datetime
+# def fetch_data_from_db(query, db, chart_info):
+#     try:
+#         result = db.run(query)
+#         print("Raw result:", result)
+#         print("Result type:", type(result))
+        
+#         if result is None:
+#             print("Query returned None.")
+#             return pd.DataFrame()
+
+#         # If result is a string containing list of tuples with datetime
+#         if isinstance(result, str):
+#             try:
+#                 # Extract datetime and value pairs using string manipulation
+                
+
+#                 # Parse the string to extract datetime and values
+#                 pattern = r"datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*(\d+)"
+#                 matches = re.findall(pattern, result)
+                
+#                 formatted_data = []
+#                 for match in matches:
+#                     year, month, day, hour, minute, second, value = map(int, match)
+#                     dt = datetime(year, month, day, hour, minute, second)
+#                     formatted_data.append((dt.strftime('%Y-%m-%d %H:%M:%S'), value))
+
+#                 if not formatted_data:
+#                     print("No valid data extracted from string")
+#                     return pd.DataFrame()
+
+#                 df = pd.DataFrame(formatted_data, columns=[chart_info.x_axis, chart_info.y_axis])
+#                 print("Final DataFrame:\n", df.head())
+#                 return df
+
+#             except Exception as e:
+#                 print(f"Error parsing string result: {e}")
+#                 traceback.print_exc()
+#                 return pd.DataFrame()
+
+#         # If result is already a DataFrame
+#         if isinstance(result, pd.DataFrame):
+#             return result
+
+#         # Ensure result is a list
+#         if not isinstance(result, list):
+#             result = [result]
+
+#         print("Processed result:", result)
+
+#         # Extract data based on x_axis and y_axis
+#         formatted_data = []
+#         for item in result:
+#             try:
+#                 # If item is a tuple or list with exactly 2 elements
+#                 if isinstance(item, (tuple, list)) and len(item) == 2:
+#                     x_value, y_value = item
+
+#                     # Handle datetime conversion
+#                     if isinstance(x_value, datetime):
+#                         x_value = x_value.strftime('%Y-%m-%d %H:%M:%S')
+#                     if isinstance(y_value, datetime):
+#                         y_value = y_value.strftime('%Y-%m-%d %H:%M:%S')
+
+#                     formatted_data.append((x_value, y_value))
+#                 else:
+#                     print(f"Skipping invalid data format: {item}")
+#                     continue
+
+#             except Exception as e:
+#                 print(f"Error processing record {item}: {str(e)}")
+#                 continue
+
+#         if not formatted_data:
+#             print("No valid data after processing")
+#             return pd.DataFrame()
+
+#         # Create DataFrame
+#         df = pd.DataFrame(formatted_data, columns=[chart_info.x_axis, chart_info.y_axis])
+#         print("Final DataFrame:\n", df.head())
+#         return df
+
+#     except Exception as e:
+#         print(f"Error in fetch_data_from_db: {str(e)}")
+#         print(f"Error type: {type(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return pd.DataFrame()
+
+import json
+import pandas as pd
+import re
+import ast
+from datetime import datetime
+
 def fetch_data_from_db(query, db, chart_info):
     try:
         result = db.run(query)
         print("Raw result:", result)
         print("Result type:", type(result))
-        
+
         if result is None:
             print("Query returned None.")
             return pd.DataFrame()
 
-        # If result is a string containing list of tuples with datetime
+        # Handle stringified results
         if isinstance(result, str):
             try:
-                # Extract datetime and value pairs using string manipulation
-                import re
-                from datetime import datetime
-
-                # Parse the string to extract datetime and values
-                pattern = r"datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*(\d+)"
-                matches = re.findall(pattern, result)
-                
                 formatted_data = []
-                for match in matches:
-                    year, month, day, hour, minute, second, value = map(int, match)
-                    dt = datetime(year, month, day, hour, minute, second)
-                    formatted_data.append((dt.strftime('%Y-%m-%d %H:%M:%S'), value))
+                
+                # Case 1: datetime.datetime format with time
+                if "datetime.datetime" in result:
+                    pattern = r"datetime\.datetime\((\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*(\d+)"
+                    matches = re.findall(pattern, result)
+                    
+                    if matches:
+                        for match in matches:
+                            year, month, day, hour, minute, second, value = map(int, match)
+                            # Format as date only since we don't need the time
+                            dt = f"{year}-{month:02d}-{day:02d}"
+                            formatted_data.append((dt, value))
+                    else:
+                        print("No matches found with datetime pattern")
+                        return pd.DataFrame()
+
+                # Case 2: datetime.date format
+                elif "datetime.date" in result:
+                    pattern = r"datetime\.date\((\d+),\s*(\d+),\s*(\d+)\),\s*(\d+)"
+                    matches = re.findall(pattern, result)
+                    
+                    if matches:
+                        for match in matches:
+                            year, month, day, value = map(int, match)
+                            dt = f"{year}-{month:02d}-{day:02d}"
+                            formatted_data.append((dt, value))
+                    else:
+                        print("No matches found with datetime.date pattern")
+                        return pd.DataFrame()
+
+                # Case 3: Regular tuples
+                else:
+                    parsed = ast.literal_eval(result)
+                    if isinstance(parsed, list) and all(isinstance(t, (tuple, list)) and len(t) == 2 for t in parsed):
+                        for x_value, y_value in parsed:
+                            if isinstance(x_value, datetime):
+                                x_value = x_value.strftime('%Y-%m-%d')
+                            formatted_data.append((x_value, y_value))
+                    else:
+                        print("String did not evaluate to expected list of tuples.")
+                        return pd.DataFrame()
 
                 if not formatted_data:
                     print("No valid data extracted from string")
@@ -212,6 +336,7 @@ def fetch_data_from_db(query, db, chart_info):
 
             except Exception as e:
                 print(f"Error parsing string result: {e}")
+                import traceback
                 traceback.print_exc()
                 return pd.DataFrame()
 
@@ -229,15 +354,14 @@ def fetch_data_from_db(query, db, chart_info):
         formatted_data = []
         for item in result:
             try:
-                # If item is a tuple or list with exactly 2 elements
                 if isinstance(item, (tuple, list)) and len(item) == 2:
                     x_value, y_value = item
 
-                    # Handle datetime conversion
-                    if isinstance(x_value, datetime):
-                        x_value = x_value.strftime('%Y-%m-%d %H:%M:%S')
-                    if isinstance(y_value, datetime):
-                        y_value = y_value.strftime('%Y-%m-%d %H:%M:%S')
+                    # Handle datetime.date objects
+                    if isinstance(x_value, datetime.date):
+                        x_value = x_value.strftime('%Y-%m-%d')
+                    elif isinstance(x_value, datetime):
+                        x_value = x_value.strftime('%Y-%m-%d')  # Only keep the date part
 
                     formatted_data.append((x_value, y_value))
                 else:
@@ -252,14 +376,12 @@ def fetch_data_from_db(query, db, chart_info):
             print("No valid data after processing")
             return pd.DataFrame()
 
-        # Create DataFrame
         df = pd.DataFrame(formatted_data, columns=[chart_info.x_axis, chart_info.y_axis])
         print("Final DataFrame:\n", df.head())
         return df
 
     except Exception as e:
         print(f"Error in fetch_data_from_db: {str(e)}")
-        print(f"Error type: {type(e)}")
         import traceback
         traceback.print_exc()
         return pd.DataFrame()

@@ -264,7 +264,24 @@ CHART_CHECK_PROMPT = "Does this question ask for a chart or visualization? Answe
 
 # Unauthorized Access Prompt
 UNAUTHORIZED_ACCESS_PROMPT = """
-Access Denied: Your current role '{role}' does not have permission to access data from the following table(s): '{restricted_tables}'.
-
-If you believe this is an error or require access to these resources, please contact your administrator or review your assigned role’s permissions.
+   <div class="p-4 text-black dark:text-gray-300 rounded-xl shadow-lg">
+     <div class="space-y-4">
+       <h2 class="text-xl font-semibold text-red-600 dark:text-red-400">
+         Access Denied
+       </h2>
+       <p class="text-gray-700 dark:text-gray-200">
+         Your current role
+         <span class="font-semibold text-black dark:text-white">'{role}'</span>
+         does not have permission to access data from the following table(s):
+       </p>
+       <div class="p-3 rounded-md border border-gray-200 dark:border-gray-700">
+         <code class="text-sm font-mono text-gray-800 dark:text-gray-300">
+           '{restricted_tables}'
+         </code>
+       </div>
+       <p class="text-sm text-gray-600 dark:text-gray-400">
+         If you believe this is an error or require access to these resources, please contact your administrator or review your assigned role's permissions.
+       </p>
+     </div>
+   </div>
 """
